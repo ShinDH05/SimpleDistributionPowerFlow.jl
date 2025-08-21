@@ -227,7 +227,7 @@ function powerflow(; input="", output="",
                     
                     if q_ph1 > q_max   q_ph1 = q_max; end
                     if q_ph2 > q_max   q_ph2 = q_max; end
-                    if q_ph3 > q_max   q_ph2 = q_max; end
+                    if q_ph3 > q_max   q_ph3 = q_max; end
 
 
                     #eliminate row of distributed generation from loads dataframe
