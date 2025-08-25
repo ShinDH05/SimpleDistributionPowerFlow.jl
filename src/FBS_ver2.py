@@ -1,23 +1,25 @@
-# data_input_py.py
-# 목적: SimpleDistributionPowerFlow.jl 의 data_input.jl 동작을
-#       Python 3.13 + 표준 라이브러리 + NumPy만으로 "함수 없이" 재현
-# 주의: 여기서는 읽기/검증/정규화까지만 수행합니다. 수치 계산은 다른 단계에서 진행.
-# 경로/입력/출력 포맷은 줄리아와 동일 규칙 유지.
+# FBS_ver2.py
+# Purpose: Reproduce the behaviour of SimpleDistributionPowerFlow.jl's
+# `data_input.jl` using Python 3.13, the standard library, and NumPy without
+# defining functions.
+# Only reading, validation, and normalisation are performed here; numerical
+# calculations occur in later stages. Paths and I/O formats follow the Julia
+# implementation.
 
 import os
 import csv
 import sys
 import numpy as np
 
-# ===== 사용자 고정 경로 (요구 5) =====
+# ===== User-specified directories =====
 input_dir  = r"C:\dev\ACPF\BFS\examples\ieee-13"
 output_dir = r"C:\dev\ACPF\BFS\results"
 
-# ===== 실행 컨텍스트 (줄리아 read_input_files 인자와 동일 의미) =====
-CALLER  = "powerflow"  # "powerflow"일 때 spot_loads/Capacitors/DG까지 읽음
-VERBOSE = 1            # 0이 아니면 일부 안내 메시지 출력
+# ===== Execution context (equivalent to Julia `read_input_files` arguments) =====
+CALLER  = "powerflow"  # when "powerflow", also load spot loads, capacitors and DG
+VERBOSE = 1            # display informational messages when non-zero
 
-# ===== 전역에 해당하는 상태 (줄리아 global들과 동일 키로 유지) =====
+# ===== Global state mirroring Julia variables =====
 bus_coords = []
 distributed_gen = []
 distributed_loads = []
@@ -37,11 +39,11 @@ substation = []
 switches = []
 transformers = []
 
-# ===== 에러 메시지 누적 (줄리아는 함수 반환값으로 err_msg 사용) =====
+# ===== Accumulated error messages (Julia uses `err_msg` return value) =====
 err_msg = ""
 
 # --------------------------------------------------------------
-# [Julia: directory_check(dir, type)] 입력/출력 디렉토리 정규화
+# [Julia: directory_check(dir, type)] normalise input/output directories
 # --------------------------------------------------------------
 # input
 if input_dir != "":
@@ -59,7 +61,7 @@ if output_dir != "":
         if not os.path.isabs(output_dir):
             output_dir = os.path.join(os.getcwd(), output_dir)
     else:
-        # 줄리아 mkpath와 동일: 없으면 생성
+        # Create directory if missing (Julia `mkpath` equivalent)
         os.makedirs(output_dir, exist_ok=True)
         if not os.path.isabs(output_dir):
             output_dir = os.path.join(os.getcwd(), output_dir)
@@ -72,17 +74,17 @@ if err_msg:
 
 # --------------------------------------------------------------
 # [Julia: read_input_files(input_directory, caller, verbose)]
-#  - CSV 로드(존재/공백 판정)
-#  - 컬럼명 정확성 검증(순서 포함)
-#  - 단위(ft/mi/m/km) 검증
-#  - 중복 검증
-#  - 대문자 정규화(config/state/mode/conn 등)
+#  - Load CSVs (check existence and emptiness)
+#  - Validate column names and order
+#  - Validate units (ft, mi, m, km)
+#  - Check for duplicates
+#  - Normalise text to uppercase (config/state/mode/conn)
 # --------------------------------------------------------------
 accepted_units = ["ft", "mi", "m", "km"]
 
-# -- 유틸: CSV 읽기 (함수 없이 구현; 각 파일마다 동일 패턴 사용) --
-# 반환: rows(list[dict]), file_err("no file"/"empty file"/"")
-# (줄리아 read_file과 동일 의미)
+# -- Utility: CSV reading pattern without functions --
+# Returns: rows (list of dict) and file_err ("no file"/"empty file"/"")
+# Equivalent to Julia's `read_file`
 # substation.csv
 substation_path = os.path.join(input_dir, "substation.csv")
 if os.path.isfile(substation_path):
@@ -138,12 +140,12 @@ else:
     if seg_hdr != expected:
         err_msg = "check for column names in 'line_segments.csv' file"
         print(err_msg); sys.exit(1)
-    # 단위 검증
+    # Validate units
     bad_units = [r for r in input_segments if (r.get("unit") not in accepted_units)]
     if len(bad_units) > 0:
         err_msg = "check for units in 'line_segments.csv' file (only ft, mi, m and km are accepted units)"
         print(err_msg); sys.exit(1)
-    # (bus1,bus2) 중복 검증
+    # Check for duplicate (bus1, bus2) pairs
     pair_set = set()
     for r in input_segments:
         pair = (r.get("bus1"), r.get("bus2"))
@@ -151,7 +153,7 @@ else:
     if len(pair_set) != len(input_segments):
         err_msg = "check for duplicated links in 'line_segments.csv' file"
         print(err_msg); sys.exit(1)
-    # :config 대문자화(문자열 강제)
+    # Force configuration codes to uppercase strings
     for r in input_segments:
         r["config"] = str(r.get("config", "")).upper()
 
@@ -182,12 +184,12 @@ else:
     if cfg_hdr != expected:
         err_msg = "check for column names in 'line_configurations.csv' file"
         print(err_msg); sys.exit(1)
-    # 단위 검증
+    # Validate units
     bad_units = [r for r in line_configurations if (r.get("unit") not in accepted_units)]
     if len(bad_units) > 0:
         err_msg = "check for units in 'line_configurations.csv' file (only ft, mi, m and km are accepted units)"
         print(err_msg); sys.exit(1)
-    # config 대문자화 및 중복 검증
+    # Uppercase configuration codes and check for duplicates
     for r in line_configurations:
         r["config"] = str(r.get("config", "")).upper()
     cfg_codes = [r.get("config") for r in line_configurations]
@@ -195,7 +197,7 @@ else:
         err_msg = "check for duplicated configuration code in 'line_configurations.csv' file"
         print(err_msg); sys.exit(1)
 
-# transformers.csv (선택)
+# transformers.csv (optional)
 tr_path = os.path.join(input_dir, "transformers.csv")
 if os.path.isfile(tr_path):
     with open(tr_path, "r", newline="", encoding="utf-8-sig") as f:
@@ -227,7 +229,7 @@ if tr_err == "":
             print(err_msg); sys.exit(1)
         has_transformer = True
 
-# switches.csv (선택)
+# switches.csv (optional)
 sw_path = os.path.join(input_dir, "switches.csv")
 if os.path.isfile(sw_path):
     with open(sw_path, "r", newline="", encoding="utf-8-sig") as f:
@@ -258,7 +260,7 @@ if sw_err == "":
             print(err_msg); sys.exit(1)
         has_switch = True
 
-# regulators.csv (선택)
+# regulators.csv (optional)
 rg_path = os.path.join(input_dir, "regulators.csv")
 if os.path.isfile(rg_path):
     with open(rg_path, "r", newline="", encoding="utf-8-sig") as f:
@@ -289,8 +291,8 @@ if rg_err == "":
             print(err_msg); sys.exit(1)
         has_regulator = True
 
-# bus_coords.csv (선택)
-# bus_coords.csv (선택)
+# bus_coords.csv (optional)
+# bus_coords.csv (optional)
 bc_path = os.path.join(input_dir, "bus_coords.csv")
 if os.path.isfile(bc_path):
     with open(bc_path, "r", newline="", encoding="utf-8-sig") as f:
@@ -306,7 +308,7 @@ else:
     bc_err = "no file"
 bus_coords = bc_rows
 
-# 유효성 검사 후에만 True
+# Set True only after validation succeeds
 valid_bus_coords = False
 if bc_err == "":
     expected = ["bus","x","y"]
@@ -318,7 +320,7 @@ if bc_err == "":
         valid_bus_coords = False
 has_bus_coords = valid_bus_coords
 
-# 입력 세그먼트 config 유효성(선로/변압기/스위치/레귤레이터)
+# Validate segment configurations (line/transformer/switch/regulator)
 seg_cfgs = [r.get("config") for r in input_segments]
 cfg_line_set = set([r.get("config") for r in line_configurations])
 without_config = [r for r in input_segments if r.get("config") not in cfg_line_set]
@@ -341,7 +343,7 @@ if len(without_config) != 0:
                f"'transformers', 'switches' or 'regulators' .csv files in {input_dir}")
     print(err_msg); sys.exit(1)
 
-# distributed_loads.csv (선택)
+# distributed_loads.csv (optional)
 dl_path = os.path.join(input_dir, "distributed_loads.csv")
 if os.path.isfile(dl_path):
     with open(dl_path, "r", newline="", encoding="utf-8-sig") as f:
@@ -367,12 +369,12 @@ if dl_err == "":
 else:
     if VERBOSE != 0:
         print("no distributed loads")
-    # 줄리아는 err_msg를 비움
+    # Julia clears err_msg here
     dl_err = ""
 
-# CALLER가 powerflow일 때 추가 입력
+# Additional inputs when CALLER is "powerflow"
 if CALLER == "powerflow":
-    # spot_loads.csv (필수)
+    # spot_loads.csv (required)
     sl_path = os.path.join(input_dir, "spot_loads.csv")
     if os.path.isfile(sl_path):
         with open(sl_path, "r", newline="", encoding="utf-8-sig") as f:
@@ -400,7 +402,7 @@ if CALLER == "powerflow":
             err_msg = "check for column names in 'spot_loads.csv' file"
             print(err_msg); sys.exit(1)
 
-    # capacitors.csv (선택)
+    # capacitors.csv (optional)
     cap_path = os.path.join(input_dir, "capacitors.csv")
     if os.path.isfile(cap_path):
         with open(cap_path, "r", newline="", encoding="utf-8-sig") as f:
@@ -428,7 +430,7 @@ if CALLER == "powerflow":
             print("no capacitors")
         cap_err = ""
 
-    # distributed_generation.csv (선택)
+    # distributed_generation.csv (optional)
     dg_path = os.path.join(input_dir, "distributed_generation.csv")
     if os.path.isfile(dg_path):
         with open(dg_path, "r", newline="", encoding="utf-8-sig") as f:
@@ -450,7 +452,7 @@ if CALLER == "powerflow":
             err_msg = "check for column names in 'distributed_generation.csv' file"
             print(err_msg); sys.exit(1)
         else:
-            # mode 대문자화 + 유효성 검사
+            # Normalize mode to uppercase and validate
             for r in distributed_gen:
                 r["mode"] = str(r.get("mode", "")).upper()
             invalid_modes = [r for r in distributed_gen if r.get("mode") not in ("PQ", "PQV", "PI")]
@@ -458,7 +460,7 @@ if CALLER == "powerflow":
                 err_msg = ("modes of Distributed Generation accepted: PQ (traditional constant watt-var), "
                            "PQV (volt dependant var PQ), PI (constant watt-ampere)")
                 print(err_msg); sys.exit(1)
-            # bus/conn/mode 결측 제거 알림 (줄리아 dropmissing! 동작을 재현)
+            # Report and drop rows with missing bus/conn/mode (Julia `dropmissing!`)
             def _is_missing(v):
                 return v is None or (isinstance(v, str) and v.strip() == "")
             before = len(distributed_gen)
@@ -472,44 +474,46 @@ if CALLER == "powerflow":
             if not has_distributed_gen:
                 if VERBOSE != 0:
                     print("no distributed generation")
-                # 줄리아는 err_msg 비움
+                # Julia clears err_msg here
     else:
         if VERBOSE != 0:
             print("no distributed generation")
-        # 줄리아는 err_msg 비움
+        # Julia clears err_msg here
 
-# 최종: 에러 없으면 정상 종료
-# 이후 단계에서 이 전역 상태들을 그대로 사용합니다.
+# Final: exit normally if no errors
+# Subsequent stages reuse these global states
 if VERBOSE != 0:
     print("\nInput files loaded and validated successfully.")
 
 # === topology_discovery_py.py ===
-# 목적: topology_discovery.jl(gridtopology, adjacency_matrix, graph_topology, report_topology)의
-#       토폴로지 생성 로직을 함수 없이 순차 블록으로 구현 (Python 3.13 + 표준 라이브러리 + NumPy)
-# 전제: 직전 블록(data_input_py.py 변환)에서 아래 전역들이 준비되어 있어야 함.
-#   - 입력 데이터: substation, input_segments, line_configurations, transformers, switches,
-#                  regulators, distributed_loads, bus_coords
-#   - 플래그: has_transformer, has_switch, has_regulator, has_distributed_load, has_bus_coords
-#   - 경로: input_dir, output_dir
-# 주의: 그래프 시각화(Plots/GraphRecipes)는 미사용. 대신 CSV로 결과를 저장합니다.
+# Purpose: replicate `topology_discovery.jl` (gridtopology, adjacency_matrix,
+# graph_topology, report_topology) in sequential blocks without functions
+# (Python 3.13 + standard library + NumPy).
+# Prerequisite: the previous block prepared these globals:
+#   - Input data: substation, input_segments, line_configurations, transformers,
+#     switches, regulators, distributed_loads, bus_coords
+#   - Flags: has_transformer, has_switch, has_regulator, has_distributed_load,
+#     has_bus_coords
+#   - Paths: input_dir, output_dir
+# Note: graph visualisation is omitted; results are written to CSV instead.
 
 import os, csv
 import numpy as np
 from datetime import datetime
 
-# ==== 사용자 조정 파라미터 (원본 keyword args 대응) ====
+# ==== User-adjustable parameters (match original keyword args) ====
 CALLER = "powerflow"         # "user" | "powerflow"
-GRAPH_TITLE = ""             # (미사용: 이미지 미생성)
-MARKER_SIZE = 1.5            # (미사용)
-TIMESTAMP = False            # 결과 파일명에 타임스탬프 부여 여부
+GRAPH_TITLE = ""             # (unused: no image generation)
+MARKER_SIZE = 1.5            # (unused)
+TIMESTAMP = False            # append timestamp to output filenames
 VERBOSE = 1
 
-# ==== 내부 유틸: 파일명 생성 ====
+# ==== Internal utility: filename generation ====
 _ts = ("_" + datetime.now().strftime("%Y%m%d-%H%M")) if TIMESTAMP else ""
 def _out(name): return os.path.join(output_dir, f"{name}{_ts}.csv")
 
-# ==== 0) 입력 토폴로지용 버스 목록 생성 (원본: input_buses) ====
-# 규칙: line_segments의 bus2 순서 고유 → 이후 bus1 중 아직 없는 것 추가
+# ==== 0) Build bus list for input topology (original: input_buses) ====
+# Rule: unique bus2 order from line_segments, then add any remaining bus1 values
 _input_bus_ids = []
 for seg in input_segments:
     b2 = int(seg["bus2"])
@@ -520,32 +524,32 @@ for seg in input_segments:
     if b1 not in _input_bus_ids:
         _input_bus_ids.append(b1)
 
-# 버스 테이블(원본은 DataFrame의 :id 한 열만 사용)
+# Bus table (original uses DataFrame with only the :id column)
 input_buses = [{"id": b} for b in _input_bus_ids]
 
-# ==== 1) 입력 토폴로지 인접행렬(스위치 개방 반영) ====
-# 원본 adjacency_matrix(buses, segments) 로직을 그대로 구현
-# - buses는 정렬해서 인덱싱
+# ==== 1) Adjacency matrix for input topology (with switch states) ====
+# Replicates original adjacency_matrix(buses, segments) logic
+# - buses sorted for indexing
 _ids_sorted = sorted([int(r["id"]) for r in input_buses])
 _id2idx = {bid: i for i, bid in enumerate(_ids_sorted)}
 N_in = len(_ids_sorted)
 adj_mat_input = np.zeros((N_in, N_in), dtype=np.int64)
 
-# 기본 간선(방향: bus1 -> bus2)
+# Base edges (direction: bus1 -> bus2)
 for seg in input_segments:
     i = _id2idx[int(seg["bus1"])]
     j = _id2idx[int(seg["bus2"])]
     adj_mat_input[i, j] = 1
 
-# 스위치 구성인 세그먼트는 상태에 따라 간선 제거
+# Remove edges for switch segments based on state
 if has_switch:
     line_cfg_codes = set([str(r["config"]) for r in line_configurations])
     sw_cfg_codes = set([str(r["config"]) for r in switches])
     for seg in input_segments:
         cfg = str(seg["config"])
         if (cfg not in line_cfg_codes) and (cfg in sw_cfg_codes):
-            # 이 세그먼트는 스위치 장치임
-            # 해당 스위치 상태 조회
+            # This segment represents a switch
+            # Check the switch state
             st = None
             for s in switches:
                 if str(s["config"]) == cfg:
@@ -556,8 +560,8 @@ if has_switch:
                 j = _id2idx[int(seg["bus2"])]
                 adj_mat_input[i, j] = 0
 
-# ==== 2) 워킹 토폴로지 구성(스위치 반영, 단절 세그먼트 제거) ====
-# working_segments = input_segments + check(=0) 열 → open 스위치는 check=1로 표시 후 제거
+# ==== 2) Build working topology (apply switches, remove isolated segments) ====
+# Start with input_segments plus a `check` column; mark open switches with check=1
 working_segments = []
 for seg in input_segments:
     rec = dict(seg)
@@ -573,20 +577,20 @@ if has_switch:
                     working_segments[m]["_check"] = 1
     working_segments = [r for r in working_segments if r["_check"] == 0]
 
-# ==== 3) 루트로부터 연결된 버스만 남기기 ====
-# 시드: 서브스테이션 버스(:bus → :id)
+# ==== 3) Keep only buses reachable from the root ====
+# Seed: substation bus (:bus → :id)
 if not substation:
     raise RuntimeError("substation.csv is required and must have at least one row.")
 root_bus = int(substation[0]["bus"])
 working_buses_ids = [root_bus]
 increase_monitor = 1
 
-# 원본과 동일하게: working_buses[n]를 확장하는 형태로 순차 추가 후 확장 없으면 break
+# Same as original: expand working_buses sequentially and stop when no new bus is found
 for _ in range(len(working_segments)):
-    # 현재 인덱스 n에 해당하는 루트부터 출발 엣지 검색
-    n_idx = len(working_buses_ids) - 1  # 마지막 추가된 버스 기준
-    # 원본은 1..nrow(working_segments) 루프에서 working_buses[n,:id] 사용
-    # 여기서는 같은 효과를 내도록 현재까지 확보된 모든 bus에서 확장
+    # Search edges starting from the bus at current index n
+    n_idx = len(working_buses_ids) - 1  # index of the last added bus
+    # Original iterates 1..nrow(working_segments) using working_buses[n,:id]
+    # Here we expand from all collected buses to achieve the same effect
     before = len(working_buses_ids)
     for known in list(working_buses_ids):
         for seg in working_segments:
@@ -599,11 +603,11 @@ for _ in range(len(working_segments)):
     else:
         break
 
-# ==== 4) 스위치로 인한 방향성 보정(부족 버스가 있으면 일부 세그먼트 방향 스왑) ====
+# ==== 4) Correct direction due to switches (swap segments if bus missing) ====
 if has_switch and (len(working_buses_ids) != len(_input_bus_ids)):
     buses_diff = len(_input_bus_ids) - len(working_buses_ids)
     for _ in range(buses_diff):
-        # bus2는 연결되었으나 bus1이 아직 미포함인 세그먼트 후보
+        # Candidate segments where bus2 is connected but bus1 is missing
         tmp = []
         for seg in working_segments:
             b1 = int(seg["bus1"]); b2 = int(seg["bus2"])
@@ -611,14 +615,14 @@ if has_switch and (len(working_buses_ids) != len(_input_bus_ids)):
                 tmp.append({"bus1": b1, "bus2": b2})
         if len(tmp) > 0:
             pick = tmp[0]
-            # 부족 버스 추가
+            # Add missing bus
             working_buses_ids.append(int(pick["bus1"]))
-            # 대응 세그먼트 방향 스왑
+            # Swap segment direction accordingly
             for seg in working_segments:
                 if int(seg["bus1"]) == pick["bus1"] and int(seg["bus2"]) == pick["bus2"]:
                     seg["bus1"], seg["bus2"] = seg["bus2"], seg["bus1"]
 
-# ==== 5) 워킹 세그먼트 중 루트에서 도달 불가한 세그먼트 제거 ====
+# ==== 5) Remove working segments unreachable from the root ====
 for seg in working_segments:
     if int(seg["bus1"]) not in working_buses_ids:
         seg["_check"] = 1
@@ -626,50 +630,50 @@ working_segments = [r for r in working_segments if r["_check"] == 0]
 for seg in working_segments:
     if "_check" in seg: del seg["_check"]
 
-# ==== 6) 루프 존재 여부 검사 ====
+# ==== 6) Check for loops ====
 if (len(working_segments) - len(working_buses_ids) + 1) > 0:
     msg = f"Topology has a loop, this version only works with radial topologies. See result in {output_dir}."
     print(msg)
     raise RuntimeError(msg)
 
-# ==== 7) 분포부하 처리: 보조 버스 삽입(각 구간을 1/2씩 나눔) ====
+# ==== 7) Handle distributed loads: insert auxiliary buses (split segments) ====
 auxiliar_buses = []   # [{bus1, bus2, busx}]
 if has_distributed_load and distributed_loads:
-    # 길이 실수화
+    # Convert length to float
     for seg in working_segments:
         seg["length"] = float(seg["length"])
 
-    # 분포부하에 해당하는 세그먼트를 수집
+    # Collect segments corresponding to distributed loads
     dist_load_segments = []
     for dl in distributed_loads:
         b1 = int(dl["bus1"]); b2 = int(dl["bus2"])
         for seg in working_segments:
             if int(seg["bus1"]) == b1 and int(seg["bus2"]) == b2:
-                dist_load_segments.append(dict(seg))  # 카피
+                dist_load_segments.append(dict(seg))  # copy
 
-    # 수집된 세그먼트들을 원본 워킹 세그먼트에서 제거
+    # Remove collected segments from original working segments
     def _is_same(a, b):
         return int(a["bus1"]) == int(b["bus1"]) and int(a["bus2"]) == int(b["bus2"])
     working_segments = [s for s in working_segments if all(not _is_same(s, d) for d in dist_load_segments)]
 
-    # 중간 버스 생성하여 2개 세그먼트로 분할
+    # Insert intermediate bus and split into two segments
     next_bus_id = max(working_buses_ids) + 1 if working_buses_ids else 1
     for dseg in dist_load_segments:
         start_bus = int(dseg["bus1"])
         end_bus   = int(dseg["bus2"])
         unit = dseg["unit"]; conf = dseg["config"]
         L = float(dseg["length"]); L1 = L * 0.5; L2 = L * 0.5
-        # 앞쪽 절반
+        # first half
         working_segments.append({"bus1": start_bus, "bus2": next_bus_id,
                                  "length": L1, "unit": unit, "config": conf})
-        # 뒤쪽 절반
+        # second half
         working_segments.append({"bus1": next_bus_id, "bus2": end_bus,
                                  "length": L2, "unit": unit, "config": conf})
         auxiliar_buses.append({"bus1": start_bus, "bus2": end_bus, "busx": next_bus_id})
         working_buses_ids.append(next_bus_id)
         next_bus_id += 1
 
-    # 좌표가 있으면 중점 좌표 생성
+    # Generate midpoint coordinates if available
     if has_bus_coords and bus_coords:
         known = set(int(r["bus"]) for r in bus_coords)
         no_coords = [b for b in working_buses_ids if b not in known]
@@ -692,7 +696,7 @@ if has_distributed_load and distributed_loads:
                     new_y = 0.5 * (float(pre_c["y"]) + float(post_c["y"]))
                 bus_coords.append({"bus": bx, "x": new_x, "y": new_y})
 
-# ==== 8) 워킹 토폴로지 인접행렬 산출 ====
+# ==== 8) Compute adjacency matrix for working topology ====
 _ids_sorted_w = sorted(list(set(int(b) for b in working_buses_ids)))
 _id2idx_w = {bid: i for i, bid in enumerate(_ids_sorted_w)}
 N_w = len(_ids_sorted_w)
@@ -703,7 +707,7 @@ for seg in working_segments:
     j = _id2idx_w[int(seg["bus2"])]
     adj_mat_work[i, j] = 1
 
-# 스위치 세그먼트(장치형) 개방 상태면 0
+# Switch segments (devices) set to 0 when open
 if has_switch:
     line_cfg_codes = set([str(r["config"]) for r in line_configurations])
     sw_cfg_codes = set([str(r["config"]) for r in switches])
@@ -720,9 +724,9 @@ if has_switch:
                 j = _id2idx_w[int(seg["bus2"])]
                 adj_mat_work[i, j] = 0
 
-# ==== 9) (옵션) 줄리아 결과 CSV와 비교 ====
-# 주: 원본은 PNG만 저장하므로 직접 비교 파일이 없을 수 있습니다.
-#    baseline 파일이 존재하면 allclose로 비교하고, 없으면 건너뜁니다.
+# ==== 9) (Optional) Compare with Julia baseline CSV ====
+# Note: original saves only PNG, so a baseline CSV may be missing.
+# If a baseline exists, compare using `allclose`; otherwise skip.
 def _try_compare(a_path, b_path, name):
     try:
         if os.path.isfile(a_path) and os.path.isfile(b_path):
@@ -733,28 +737,31 @@ def _try_compare(a_path, b_path, name):
     except Exception as e:
         print(f"[COMPARE] {name}: skipped ({e})")
 
-# 예시: 사용자가 baseline을 제공했다면 아래 경로를 수정해서 사용
+# Example: modify the path below if a baseline is provided
 # _try_compare(r"C:\path\to\baseline\sdpf_input_topology_adj.csv",  _out("sdpf_input_topology_adj"),  "input_adj")
 # _try_compare(r"C:\path\to\baseline\sdpf_working_topology_adj.csv", _out("sdpf_working_topology_adj"), "working_adj")
 
-# ==== 종료 메시지 (원본 caller별 리턴 모드 대응) ====
+# ==== Ending message (mirrors original caller-specific return modes) ====
 if CALLER == "user":
     print(f"Execution finished, see results in {output_dir}.")
 
 # === data_preparation_py.py ===
-# 목적: data_preparation.jl 의 data_preparation() + working_lines() 동작을
-#       Python 3.13 + NumPy만으로 "함수 없이" 순차 구현
-# 전제: 이전 단계에서 다음 전역이 준비됨:
+# Purpose: emulate `data_preparation()` and `working_lines()` from
+# `data_preparation.jl` sequentially using Python 3.13 + NumPy without
+# functions.
+# Prerequisite: previous stages prepared the following globals:
 #  - substation, working_segments, line_configurations, transformers, switches,
 #    regulators, spot_loads, distributed_loads, input_capacitors, distributed_gen
-#  - has_transformer, has_switch, has_regulator, has_distributed_load, has_distributed_gen
+#  - has_transformer, has_switch, has_regulator, has_distributed_load,
+#    has_distributed_gen
 #  - input_dir, output_dir
-# 주의: pandas 미사용, 리스트+dict로 DataFrame 대체. dtype은 float64/complex128 고정.
+# Note: pandas is not used; lists + dicts emulate DataFrames. dtype fixed to
+# float64/complex128.
 
 import math, os, csv
 import numpy as np
 
-# ---------- 공통 유틸 ----------
+# ---------- Common utilities ----------
 def _to_float(x):
     try:
         return float(x)
@@ -786,21 +793,21 @@ def _ids_from_segments(segs):
         s.add(_to_int(r["bus2"]))
     return sorted(s)
 
-# ---------- (안전) working_buses / adj_mat 확보 ----------
+# ---------- Ensure working_buses / adj_mat are available ----------
 try:
     working_buses
 except NameError:
     working_buses = []
 
 if not working_buses:
-    # 토폴로지 단계에서 리스트를 만들지 않았다면 세그먼트로부터 생성
+    # If topology stage didn't build the list, derive it from segments
     _wb_ids = _ids_from_segments(working_segments)
     working_buses = [{"id": i} for i in _wb_ids]
 
 try:
-    adj_mat  # 토폴로지에서 생성되었는지 확인
+    adj_mat  # check if created during topology stage
 except NameError:
-    # 없으면 working_segments로부터 생성
+    # If missing, build from working_segments
     _wb_ids = sorted([b["id"] for b in working_buses])
     _idx = {bid: i for i, bid in enumerate(_wb_ids)}
     N = len(_wb_ids)
@@ -810,13 +817,13 @@ except NameError:
         j = _idx[_to_int(seg["bus2"])]
         adj_mat[i, j] = 1
 
-# ---------- working_lines() 변환 블록 ----------
+# ---------- working_lines() conversion block ----------
 # lines = working_segments + :type (1=line, 2=transformer, 3=switch, 4=regulator)
 lines = [dict(r) for r in working_segments]
 for r in lines:
-    r["type"] = 0  # 초기값
+    r["type"] = 0  # initial value
 
-# 타입 판정
+# Determine type
 line_cfg_codes = set(str(r["config"]) for r in line_configurations)
 if has_transformer:
     tr_codes = set(str(r["config"]) for r in transformers)
@@ -836,19 +843,18 @@ for r in lines:
     if has_regulator and cfg in rg_codes:
         r["type"] = 4
 
-# working_buses에 :type, :number 컬럼 추가
+# Add :type and :number columns to working_buses
 for b in working_buses:
     b["type"] = 0   # 1=sub,2=bif,3=intermediate,4=next-to-end,5=end
     b["number"] = 0
 
-# out-degree(=downward_buses) 계산
-# adj_mat 행합(축=1)
+# Compute out-degree (=downward_buses)
 downward_buses = np.sum(adj_mat, axis=1).astype(np.int64)  # shape (N,)
-# id→행인덱스 매핑
+# Map bus id to row index
 wb_ids_sorted = sorted([b["id"] for b in working_buses])
 wb_id2idx = {bid: i for i, bid in enumerate(wb_ids_sorted)}
 
-# 1차 마킹: 종단/분기
+# First marking: end vs branch
 for b in working_buses:
     deg = downward_buses[wb_id2idx[b["id"]]]
     if deg == 0:
@@ -856,7 +862,7 @@ for b in working_buses:
     elif deg > 1:
         b["type"] = 2  # bifurcation
 
-# 2차 마킹: out-degree=1 → 다음 버스가 종단이면 4, 아니면 3
+# Second marking: if out-degree=1 and next bus is an end bus, mark 4 else 3
 for b in working_buses:
     if downward_buses[wb_id2idx[b["id"]]] == 1:
         # b→next_bus
@@ -868,21 +874,21 @@ for b in working_buses:
             else:
                 b["type"] = 3  # intermediate
 
-# 변전소(서브스테이션) 버스 지정
+# Mark substation bus
 root_bus = _to_int(substation[0]["bus"])
 for b in working_buses:
     if b["id"] == root_bus:
         b["type"] = 1
 
-# type 오름차순 정렬
+# Sort by type ascending
 working_buses.sort(key=lambda x: x["type"])
 
-# 초기 번호 부여 (type ∈ {1,4,5})
+# Assign initial numbers (type ∈ {1,4,5})
 for idx, b in enumerate(working_buses, start=1):
     if b["type"] in (1, 4, 5):
         b["number"] = idx
 
-# 통계 및 역번호 시작점 k
+# Statistics and starting index k for reverse numbering
 initial_buses     = sum(1 for b in working_buses if b["type"] == 1)
 bifurcation_buses = sum(1 for b in working_buses if b["type"] == 2)
 interm_buses      = sum(1 for b in working_buses if b["type"] == 3)
@@ -890,7 +896,7 @@ next_to_end_buses = sum(1 for b in working_buses if b["type"] == 4)
 end_buses         = sum(1 for b in working_buses if b["type"] == 5)
 k = len(working_buses) - end_buses - next_to_end_buses
 
-# 중간/분기 버스 번호 매기기
+# Number intermediate and branch buses
 if bifurcation_buses > 0:
     for _p in range(bifurcation_buses):
         for _q in range(next_to_end_buses):
@@ -923,7 +929,7 @@ else:
                     if n2 and n2["number"] != 0:
                         b["number"] = n2["number"] - 1
 
-# 남은 미번호 버스 처리(선행자 번호+1)
+# Assign numbers to remaining buses (predecessor number + 1)
 def _has_unnumbered():
     return any(b["type"] == 3 and b["number"] == 0 for b in working_buses)
 
@@ -935,10 +941,10 @@ while _has_unnumbered():
                 prec_bus = _first_row(working_buses, lambda x: x["id"] == _to_int(prec_seg["bus1"]))
                 if prec_bus and prec_bus["number"] > 0:
                     b["number"] = prec_bus["number"] + 1
-# 번호 기준 오름차순
+# Sort by number ascending
 working_buses.sort(key=lambda x: x["number"])
 
-# 변압기 하류 마킹
+# Mark downstream transformer buses
 for b in working_buses:
     b["trf"] = None
 
@@ -950,7 +956,7 @@ if has_transformer and transformers:
                 if child:
                     child["trf"] = t["config"]
 
-    # 전파
+    # propagate
     for b in working_buses:
         if (b["trf"] is not None) and (b["type"] != 5):
             for seg in working_segments:
@@ -959,16 +965,16 @@ if has_transformer and transformers:
                     if child:
                         child["trf"] = b["trf"]
 
-# ---------- data_preparation() 변환 블록 ----------
+# ---------- data_preparation() conversion block ----------
 err_msg = ""
 
-# 회전상수 및 변환행렬
+# Rotation constant and transformation matrix
 as_ = np.exp(1j * np.deg2rad(120.0))            # = 1 * exp(j*120°)
 As  = np.array([[1, 1, 1],
                 [1, as_**2, as_],
-                [1, as_, as_**2]], dtype=np.complex128)  # 참고: 원본 As는 후속 코드에서 직접 사용되지 않음
+                [1, as_, as_**2]], dtype=np.complex128)  # note: As unused later
 
-# 기준 전압(상간/상전) 및 변환행렬 D
+# Base voltages (LL/LN) and transformation matrix D
 ell = _to_float(substation[0]["kv"]) * 1000.0                    # [V_LL]
 eln = ell / math.sqrt(3.0)                                       # [V_LN]
 ELN = np.array([eln,
@@ -979,7 +985,7 @@ D = np.array([[ 1.0, -1.0,  0.0],
               [-1.0,  0.0,  1.0]], dtype=np.float64)
 ELL = D @ ELN.astype(np.complex128)
 
-# working_buses에 v_base 추가(변압기 2차측이면 kv_low/√3, 아니면 eln)
+# Add v_base to working_buses (kv_low/√3 for transformer secondary, else ELN)
 for b in working_buses:
     b["v_base"] = 0.0
 for b in working_buses:
@@ -991,7 +997,7 @@ for b in working_buses:
     else:
         b["v_base"] = eln
 
-# line_configs 구성(저항/리액턴스→복소 임피던스, B계수는 j*값)
+# Build line_configs (R/X → complex impedance, B coefficients j*value)
 def _cfg_row(cfg):
     return {
         "config": str(cfg["config"]),
@@ -1002,7 +1008,7 @@ def _cfg_row(cfg):
         "zbb": (_to_float(cfg["rbb"]) + 1j * _to_float(cfg["xbb"])),
         "zbc": (_to_float(cfg["rbc"]) + 1j * _to_float(cfg["xbc"])),
         "zcc": (_to_float(cfg["rcc"]) + 1j * _to_float(cfg["xcc"])),
-        # baa..bcc는 원본에서 1im을 곱해 순수허수로 저장 후, 길이*단위환산*(1e-6)을 곱합니다.
+        # baa..bcc multiplied by 1j in original, then by length*unit_factor*(1e-6)
         "baa": 1j * _to_float(cfg["baa"]),
         "bab": 1j * _to_float(cfg["bab"]),
         "bac": 1j * _to_float(cfg["bac"]),
@@ -1013,13 +1019,13 @@ def _cfg_row(cfg):
 
 line_configs = [_cfg_row(r) for r in line_configurations]
 
-# lines에 phases/Zxx/Bxx 열 추가(초기 None)
+# Add phases/Zxx/Bxx columns to lines (initially None)
 for r in lines:
     r["phases"] = None
     for key in ("Zaa","Zab","Zac","Zbb","Zbc","Zcc","Baa","Bab","Bac","Bbb","Bbc","Bcc"):
         r[key] = None
 
-# 변압기 Zt 추가(Ω)
+# Append transformer impedance Zt (Ω)
 if has_transformer and transformers:
     for t in transformers:
         kv_low = _to_float(t["kv_low"])
@@ -1027,14 +1033,14 @@ if has_transformer and transformers:
         zpu    = _to_float(t["rpu"]) + 1j * _to_float(t["xpu"])
         t["Zt"] = (kv_low**2 / kva) * zpu * 1000.0  # [Ω], complex128
 
-# 선로별 Z/Y 및 phases 판정
+# Determine per-line Z/Y and phases
 for r in lines:
     t = _to_int(r["type"])
     if t == 1:  # line
         cfg = _first_row(line_configs, lambda c: c["config"] == str(r["config"]))
         if cfg is None:
             continue
-        # 단위 환산계수(라인 세그먼트 단위 → 라인 configuration 단위)
+        # Unit conversion factor (segment unit → configuration unit)
         unit_line = str(r["unit"]).lower()
         unit_cfg = str(cfg["unit"]).lower()
         conv = {
@@ -1051,14 +1057,14 @@ for r in lines:
         r["Zbb"] = cfg["zbb"] * L * factor
         r["Zbc"] = cfg["zbc"] * L * factor
         r["Zcc"] = cfg["zcc"] * L * factor
-        # µS → S 로 1e-6 곱함. cfg["baa"] 등은 이미 j*값 형태임
+        # Convert µS to S by multiplying 1e-6; cfg["baa"] etc already j*value
         r["Baa"] = cfg["baa"] * L * factor * 1e-6
         r["Bab"] = cfg["bab"] * L * factor * 1e-6
         r["Bac"] = cfg["bac"] * L * factor * 1e-6
         r["Bbb"] = cfg["bbb"] * L * factor * 1e-6
         r["Bbc"] = cfg["bbc"] * L * factor * 1e-6
         r["Bcc"] = cfg["bcc"] * L * factor * 1e-6
-        # phases 판정
+        # Determine phases
         Zaa0 = (r["Zaa"] == 0 or r["Zaa"] == 0.0)
         Zbb0 = (r["Zbb"] == 0 or r["Zbb"] == 0.0)
         Zcc0 = (r["Zcc"] == 0 or r["Zcc"] == 0.0)
@@ -1100,14 +1106,14 @@ for r in lines:
             r["Baa"]=r["Bab"]=r["Bac"]=r["Bbb"]=r["Bbc"]=r["Bcc"]=0
             r["phases"] = rg["phases"]
 
-# 일반화 선로행렬 gen_lines_mat (Kersting 4ed ch.6) 생성
+# Build generalized line matrix gen_lines_mat (Kersting 4ed ch.6)
 gen_lines_mat = []
 U = np.eye(3, dtype=np.complex128)
 z_line = np.zeros((3,3), dtype=np.complex128)
 y_line = np.zeros((3,3), dtype=np.complex128)
 
 for r in lines:
-    # 대칭행렬 구성 (Zxx, Bxx는 위에서 설정)
+    # Form symmetric matrices (Zxx, Bxx set above)
     z_line[0,0] = r["Zaa"]; z_line[0,1] = r["Zab"]; z_line[0,2] = r["Zac"]
     z_line[1,0] = r["Zab"]; z_line[1,1] = r["Zbb"]; z_line[1,2] = r["Zbc"]
     z_line[2,0] = r["Zac"]; z_line[2,1] = r["Zbc"]; z_line[2,2] = r["Zcc"]
@@ -1117,7 +1123,7 @@ for r in lines:
     y_line[2,0] = r["Bac"]; y_line[2,1] = r["Bbc"]; y_line[2,2] = r["Bcc"]
 
     t = _to_int(r["type"])
-    # 기본 a,b,c,d
+    # Base matrices a,b,c,d
     if t in (1,3):  # line or switch
         a = U + 0.5 * (z_line @ y_line)
         b = z_line.copy()
@@ -1191,22 +1197,22 @@ for r in lines:
             A = d
             B = np.zeros((3,3), dtype=np.complex128)
         else:
-            a=b=c=d=A=B = np.zeros((3,3), dtype=np.complex128)  # 방어
+            a=b=c=d=A=B = np.zeros((3,3), dtype=np.complex128)  # safeguard
 
-    # gen_lines_mat 행 저장
+    # Store row into gen_lines_mat
     rec = {
         "bus1": _to_int(r["bus1"]),
         "bus2": _to_int(r["bus2"]),
     }
-    # 소문자 a,b,c,d 와 대문자 A,B (각 3x3를 낱개 요소로)
+    # Save lowercase a,b,c,d and uppercase A,B (each 3x3 as individual elements)
     for name, M in (("a",a),("b",b),("c",c),("d",d),("A",A),("B",B)):
         for i in range(3):
             for j in range(3):
                 rec[f"{name}_{i+1}_{j+1}"] = np.complex128(M[i,j])
     gen_lines_mat.append(rec)
 
-# ---------- 부하 테이블 loads 구성 ----------
-loads = []  # 각 원소: {"bus":int, "conn":str, "type":str, "ph_1":complex, "ph_2":complex, "ph_3":complex}
+# ---------- Build loads table ----------
+loads = []  # each entry: {"bus":int, "conn":str, "type":str, "ph_1":complex, "ph_2":complex, "ph_3":complex}
 
 # spot loads
 wb_id_set = set(b["id"] for b in working_buses)
@@ -1219,19 +1225,19 @@ for r in spot_loads:
         loads.append({"bus": b, "conn": str(r["conn"]).upper(), "type": str(r["type"]).upper(),
                       "ph_1": np.complex128(s1), "ph_2": np.complex128(s2), "ph_3": np.complex128(s3)})
 
-# distributed loads (보조버스 busx에 부착)
+# distributed loads (attach to auxiliary bus busx)
 if has_distributed_load and distributed_loads:
-    # bus1,bus2 → busx 매핑 준비
+    # Prepare mapping bus1,bus2 → busx
     _busx_map = {}
     for a in globals().get("auxiliar_buses", []):
         _busx_map[(int(a["bus1"]), int(a["bus2"]))] = int(a["busx"])
-        _busx_map[(int(a["bus2"]), int(a["bus1"]))] = int(a["busx"])  # 양방향 키 허용
+        _busx_map[(int(a["bus2"]), int(a["bus1"]))] = int(a["busx"])  # allow bidirectional keys
 
     for r in distributed_loads:
         b1 = _to_int(r["bus1"]); b2 = _to_int(r["bus2"])
         target_bus = _busx_map.get((b1, b2), None)
 
-        # 안전 폴백: 매핑을 못 찾으면 기존 방식으로 시작버스에 부착
+        # Fallback: attach to start bus if mapping missing
         if target_bus is None:
             seg = _first_row(working_segments, lambda s: _to_int(s["bus1"]) == b1 and _to_int(s["bus2"]) == b2)
             if seg is None:
@@ -1246,7 +1252,7 @@ if has_distributed_load and distributed_loads:
                       "ph_1": np.complex128(s1), "ph_2": np.complex128(s2), "ph_3": np.complex128(s3)})
 
 
-# capacitors → 음의 무효전력 (Y, Z)
+# capacitors → negative reactive power (Y, Z)
 for r in input_capacitors:
     b = _to_int(r["bus"])
     if b in wb_id_set:
@@ -1256,7 +1262,7 @@ for r in input_capacitors:
         loads.append({"bus": b, "conn": "Y", "type": "Z",
                       "ph_1": np.complex128(s1), "ph_2": np.complex128(s2), "ph_3": np.complex128(s3)})
 
-# ---------- 분산발전(DG) 식별/적재 ----------
+# ---------- Identify/load distributed generation (DG) ----------
 has_pq_distributed_gen  = False
 has_pqv_distributed_gen = False
 has_pi_distributed_gen  = False
@@ -1268,14 +1274,14 @@ generation_register = []  # {"bus","mode","conn","kw_ph1","kvar_ph1",...,"kW/kVA
 if has_distributed_gen and distributed_gen:
     # PQ
     pq = [r for r in distributed_gen if str(r["mode"]).upper() == "PQ"]
-    # 결측 제거
+    # Drop rows with missing data
     _valid = []
     for r in pq:
         if not (_is_missing(r.get("kw_set")) or _is_missing(r.get("kvar_set"))):
             _valid.append(r)
         else:
             print("PQ distributed generation with missing values, it will be ignored.")
-    pq = [r for r in _valid if _to_int(r.get("bus")) in wb_id_set]  # 존재 버스만
+    pq = [r for r in _valid if _to_int(r.get("bus")) in wb_id_set]  # only existing buses
     if len(pq) > 0:
         for r in pq:
             b = _to_int(r["bus"]); conn = str(r["conn"]).upper()
@@ -1315,7 +1321,7 @@ if has_distributed_gen and distributed_gen:
                                         "kw_ph2": _to_float(r["kw_set"])/3.0, "kvar_ph2": (_to_float(r["kvar_min"])+_to_float(r["kvar_max"])) / 3.0,
                                         "kw_ph3": _to_float(r["kw_set"])/3.0, "kvar_ph3": (_to_float(r["kvar_min"])+_to_float(r["kvar_max"])) / 3.0,
                                         "max_diff": 0.0})
-        # 상태 추적 컬럼들(0으로 초기화)
+        # State tracking columns initialised to 0
         for r in pqv:
             pqv_distributed_gen.append({"bus": _to_int(r["bus"]), "conn": str(r["conn"]).upper(), "mode": "PQV",
                                         "kw_set": _to_float(r["kw_set"]), "kv_set": _to_float(r["kv_set"]),
@@ -1359,15 +1365,15 @@ if has_distributed_gen and distributed_gen:
                                        "var_ph1": 0.0, "var_ph2": 0.0, "var_ph3": 0.0})
         has_pi_distributed_gen = True
 
-    # DG 종류가 하나도 없으면 전체 플래그 false
+    # If no DG types exist, set overall flag to false
     if not (has_pq_distributed_gen or has_pqv_distributed_gen or has_pi_distributed_gen):
         has_distributed_gen = False
 
-# loads에 상수 k_1~k_3 추가 (Z:I 변환상수)
+# Add constants k_1~k_3 to loads (Z:I conversion)
 for ld in loads:
     ld["k_1"] = None; ld["k_2"] = None; ld["k_3"] = None
     if ld["type"] in ("Z","I"):
-        # 버스 기준전압(v_base) 결정 (Y: V_LN, Δ: √3·V_LN)
+        # Determine bus base voltage (Y: V_LN, Δ: √3·V_LN)
         vb = None
         wb = _first_row(working_buses, lambda b: b["id"] == ld["bus"])
         if wb:
@@ -1385,7 +1391,7 @@ for ld in loads:
                     ang = np.angle(S)
                     ld[kname] = np.complex128((vb**2 / mag) * np.exp(1j*ang))
         elif ld["type"] == "I":
-            # k = |S| / V_nom  (전류 크기[A])
+            # k = |S| / V_nom  (current magnitude [A])
             for kname, sph in (("k_1","ph_1"),("k_2","ph_2"),("k_3","ph_3")):
                 S = ld[sph]
                 if S == 0 or S == 0.0:
@@ -1393,27 +1399,27 @@ for ld in loads:
                 else:
                     ld[kname] = np.float64(abs(S) / vb)
 
-# working_buses에 process(Int8), phases, v_ph1~3, ibus_1~3 추가
+# Add process(Int8), phases, v_ph1~3, ibus_1~3 to working_buses
 for b in working_buses:
     b["process"] = np.int8(0)
     b["phases"]  = None
     b["v_ph1"] = np.complex128(0+0j)
     b["v_ph2"] = np.complex128(0+0j)
     b["v_ph3"] = np.complex128(0+0j)
-# number 내림차순 정렬(원본: rev=true)
+# Sort by number descending (original rev=true)
 working_buses.sort(key=lambda x: x["number"], reverse=True)
 for b in working_buses:
     b["ibus_1"] = np.complex128(0+0j)
     b["ibus_2"] = np.complex128(0+0j)
     b["ibus_3"] = np.complex128(0+0j)
 
-# lines에 ibus1_1~3 초기화
+# Initialise lines ibus1_1~3
 for r in lines:
     r["ibus1_1"] = np.complex128(0+0j)
     r["ibus1_2"] = np.complex128(0+0j)
     r["ibus1_3"] = np.complex128(0+0j)
 
-# 임시 버스 전압·전류 컨테이너(3상)
+# Temporary containers for bus voltages/currents (three-phase)
 Vbus1 = np.zeros(3, dtype=np.complex128)
 Vbus2 = np.zeros(3, dtype=np.complex128)
 Ibus1 = np.zeros(3, dtype=np.complex128)
@@ -1422,15 +1428,15 @@ Ibus2 = np.zeros(3, dtype=np.complex128)
 
 
 # === power_flow_py.py ===
-# 목적: power_flow.jl 의 외부 반복(PQV/PI DG 보정) + 최종 결과 CSV 산출을
-#       "단일 스크립트" 형태로 구현 (Python 3.13 + NumPy)
-# 전제: 이전 단계(data_input → topology_discovery → data_preparation → sweep_procedures) 코드가
-#       같은 파일 상단에 이미 존재하여 전역 상태가 준비되어 있어야 합니다.
+# Purpose: implement power_flow.jl outer iteration (PQV/PI DG correction) and
+# final CSV generation as a single script using Python 3.13 + NumPy.
+# Prerequisite: earlier blocks (data_input → topology_discovery →
+# data_preparation → sweep_procedures) have already prepared the global state.
 
 import os, csv, math
 import numpy as np
 
-# ---------- 실행 파라미터(상위에서 지정 없을 때 기본값) ----------
+# ---------- Execution parameters (defaults if undefined above) ----------
 try:
     tolerance
 except NameError:
@@ -1448,36 +1454,36 @@ try:
 except NameError:
     timestamp = False
 
-# ---------- 타임스탬프 스UFFix ----------
+# ---------- Timestamp suffix ----------
 from datetime import datetime
 _ts = ("_" + datetime.now().strftime("%Y%m%d-%H%M")) if timestamp else ""
 def _out(name): return os.path.join(output_dir, f"{name}{_ts}.csv")
 
-# ---------- 도우미 ----------
-def _deg(z):  # 복소수 각도[deg]
+# ---------- Helpers ----------
+def _deg(z):  # complex angle in degrees
     return np.rad2deg(np.angle(z))
 def _safe_rel_diff(old: np.ndarray, new: np.ndarray):
     old = np.asarray(old, dtype=np.float64)
     new = np.asarray(new, dtype=np.float64)
     denom = np.where(np.abs(new) > 0, np.abs(new), 1.0)
     return np.max(np.abs((old - new) / denom))
-def _dump_complex_as_mag_deg(writer, zs):  # (mag,deg) 반복기록
+def _dump_complex_as_mag_deg(writer, zs):  # record (magnitude, degree) pairs
     for z in zs:
         writer.writerow([np.abs(z), _deg(z)])
 
 # =====================================================================
-# 외부 반복 루프 (PQV/PI DG만 보정; PQ는 data_preparation에서 이미 고정 주입)
+# External iteration loop (adjust PQV/PI DG; PQ fixed in data_preparation)
 # =====================================================================
 outer_iteration = 0
 max_diff = 1.0
-inner_iteration = 0  # 마지막 외부 라운드의 inner 반복수
+inner_iteration = 0  # inner iteration count of last outer round
 
 while max_diff > tolerance:
     # ---------------------------
-    # 1) FBS "내부 반복"을 수렴까지 실행
-    #    (sweep_procedures 블록의 while 루프를 재사용)
+    # 1) Run FBS internal loop until convergence
+    #    (reuse while loop from sweep_procedures block)
     # ---------------------------
-    # 초기화
+    # Initialization
     max_error = 1.0
     iter_number = 0
 
@@ -1539,7 +1545,7 @@ while max_diff > tolerance:
             b_["ibus_2"] = np.complex128(0+0j)
             b_["ibus_3"] = np.complex128(0+0j)
 
-        # 종단 버스: 부하전류
+        # Terminal buses: load currents
         for n in range(len(working_buses)):
             bn = working_buses[n]
             if bn["type"] != 5:
@@ -1583,7 +1589,7 @@ while max_diff > tolerance:
                     Iphase[:] = 0+0j
             bn["process"] = np.int8(2)
 
-        # 비종단: 자식→부모 환산 + 국소부하 합산
+        # Non-terminal: convert child → parent and add local load
         for n in range(len(working_buses)):
             bn = working_buses[n]
             if bn["type"] == 5:
@@ -1631,7 +1637,7 @@ while max_diff > tolerance:
                 lines[m]["ibus1_3"] = np.complex128(Ibus1[2])
                 bn["process"] = np.int8(2)
 
-            # 국소 부하 합산
+            # Add local load
             for ld in loads:
                 if int(ld["bus"]) != bus_id:
                     continue
@@ -1669,7 +1675,7 @@ while max_diff > tolerance:
                     Iline[:] = 0+0j
                     Iphase[:] = 0+0j
 
-        # 3) 서브스테이션 전압 오차 평가
+        # 3) Evaluate substation voltage error
         _sub_id = int(substation[0]["bus"])
         _sub = next(b for b in working_buses if int(b["id"]) == _sub_id)
         sub_phase = np.array([_sub["v_ph1"], _sub["v_ph2"], _sub["v_ph3"]], dtype=np.complex128)
@@ -1681,11 +1687,11 @@ while max_diff > tolerance:
             print(f"Program halted: maximum number of forward-backward iterations reached ({max_iterations})")
             break
 
-    # 이 외부 라운드의 내부 반복수 기록
+    # Record inner iterations for this outer round
     inner_iteration = iter_number
 
     # ---------------------------
-    # 2) DG 보정: PQV, PI
+    # 2) DG adjustment: PQV, PI
     # ---------------------------
     if not has_distributed_gen:
         max_diff = 0.0
@@ -1694,7 +1700,7 @@ while max_diff > tolerance:
 
     # (1) PQV
     if has_pqv_distributed_gen and len(pqv_distributed_gen) > 0:
-        # 현재 전압(절대값) 수집
+        # Gather current voltage magnitude
         id2V = {int(wb["id"]): (abs(wb["v_ph1"]), abs(wb["v_ph2"]), abs(wb["v_ph3"])) for wb in working_buses}
 
         for rec in pqv_distributed_gen:
@@ -1706,8 +1712,8 @@ while max_diff > tolerance:
             xd    = float(rec["xd"])
             p_ph  = float(rec["kw_set"]) * 1000.0 / 3.0
 
-            # 식: var = sqrt((v_set*|v|/xd)^2 - p_ph^2) - |v|^2/xd  (상별)
-            # 수치 안전: 루트 음수면 0으로 취급(원본은 직접 sqrt; 음수 발생 시 도메인 에러 방지 목적)
+            # Formula: var = sqrt((v_set*|v|/xd)^2 - p_ph^2) - |v|^2/xd (per phase)
+            # Numerical safety: treat negative term under sqrt as 0
             var = []
             for k in range(3):
                 term = (v_set * v_new[k] / xd)**2 - p_ph**2
@@ -1716,28 +1722,28 @@ while max_diff > tolerance:
                 var.append(var_k)
             var = np.asarray(var, dtype=np.float64)
 
-            # 한계치 클램프
+            # Clamp to limits
             qmin = float(rec["kvar_min"]) * 1000.0 / 3.0
             qmax = float(rec["kvar_max"]) * 1000.0 / 3.0
             var = np.clip(var, qmin, qmax)
 
-            # loads에서 기존 DG행 제거(type == "PQV" & bus == rec["bus"])
+            # Remove existing DG row from loads (type == "PQV" & bus == rec["bus"])
             loads = [ld for ld in loads if not (int(ld["bus"]) == bus and ld["type"] == "PQV")]
-            # 새 DG 행 삽입 (상별 S = P + jQ, 주입은 음수표기)
+            # Insert new DG row (per-phase S = P + jQ, injection negative)
             s_ph = p_ph + 1j*var
             loads.append({"bus": bus, "conn": rec["conn"], "type": "PQV",
                           "ph_1": -np.complex128(s_ph[0]),
                           "ph_2": -np.complex128(s_ph[1]),
                           "ph_3": -np.complex128(s_ph[2])})
 
-            # 변화율 기록
+            # Record change ratio
             max_volt_diff = _safe_rel_diff(v_old, v_new)
             rec["v_ph1"], rec["v_ph2"], rec["v_ph3"] = float(v_new[0]), float(v_new[1]), float(v_new[2])
             rec["max_diff"] = float(max_volt_diff)
             rec["w_ph1"] = p_ph; rec["w_ph2"] = p_ph; rec["w_ph3"] = p_ph
             rec["var_ph1"] = float(var[0]); rec["var_ph2"] = float(var[1]); rec["var_ph3"] = float(var[2])
 
-            # generation_register 업데이트(버스별 단일 행 유지)
+            # Update generation_register (one row per bus)
             generation_register = [g for g in generation_register if int(g["bus"]) != bus]
             generation_register.append({"bus": bus, "mode": "PQV", "conn": rec["conn"],
                                         "kw_ph1": p_ph/1000.0, "kvar_ph1": var[0]/1000.0,
@@ -1760,18 +1766,18 @@ while max_diff > tolerance:
             qmin  = float(rec["kvar_min"]) * 1000.0 / 3.0
             qmax  = float(rec["kvar_max"]) * 1000.0 / 3.0
 
-            # 결선별 전압/전류 기준
+            # Reference voltage/current per connection
             if rec["conn"] == "Y":
                 v_ph = v_new.copy()
                 i_ph = i_set
             else:  # "D"
-                # 선간전압 절대값
+                # Line-to-line voltage magnitude
                 v_ph = np.array([abs(v_bus[0]-v_bus[1]),
                                  abs(v_bus[1]-v_bus[2]),
                                  abs(v_bus[2]-v_bus[0])], dtype=np.float64)
                 i_ph = i_set / math.sqrt(3.0)
 
-            # q_ph = sqrt( (i_ph*v)^2 - p_ph^2 ), 도메인 음수→qmin
+            # q_ph = sqrt((i_ph*v)^2 - p_ph^2); negative → qmin
             q_ph = []
             for k in range(3):
                 term = (i_ph * v_ph[k])**2 - p_ph**2
@@ -1779,7 +1785,7 @@ while max_diff > tolerance:
                 q_ph.append(qk)
             q_ph = np.clip(np.array(q_ph, dtype=np.float64), qmin, qmax)
 
-            # loads 교체(type=="PI")
+            # Replace loads (type=="PI")
             loads = [ld for ld in loads if not (int(ld["bus"]) == bus and ld["type"] == "PI")]
             s_ph = p_ph + 1j*q_ph
             loads.append({"bus": bus, "conn": rec["conn"], "type": "PI",
@@ -1800,7 +1806,7 @@ while max_diff > tolerance:
                                         "kw_ph3": p_ph/1000.0, "kvar_ph3": q_ph[2]/1000.0,
                                         "max_diff": float(max_volt_diff)})
 
-    # (3) 종료 판단
+    # (3) Termination check
     if len(generation_register) > 0:
         max_diff = max(float(g["max_diff"]) for g in generation_register)
     else:
@@ -1809,8 +1815,8 @@ while max_diff > tolerance:
     outer_iteration += 1
 
 # === results_py (ported from print_results.jl) ===
-# 요구 전역: working_buses, lines, gen_lines_mat, substation, D, ELL, output_dir,
-#            has_distributed_load, auxiliar_buses (있으면), has_distributed_gen, generation_register,
+# Required globals: working_buses, lines, gen_lines_mat, substation, D, ELL, output_dir,
+#                   has_distributed_load, auxiliar_buses (if any), has_distributed_gen, generation_register,
 #            display_summary(bool), timestamp(bool)
 import os, csv, math
 import numpy as np
@@ -1822,7 +1828,7 @@ def _out(name):
     ts = "_" + datetime.now().strftime("%Y%m%d-%H%M") if 'timestamp' in globals() and timestamp else ""
     return os.path.join(output_dir, f"{name}{ts}.csv")
 
-# 0) 각 버스의 phases 채우기 (루트는 'abc')
+# 0) Populate phases for each bus (root uses 'abc')
 for wb in working_buses:
     wb["phases"] = None
 root_id = int(substation[0]["bus"])
@@ -1837,7 +1843,7 @@ for ln in lines:
             if int(wb["id"]) == bus2 and wb["phases"] is None:
                 wb["phases"] = phs
 
-# 보조버스가 있다면 phases 보강
+# Add phases for auxiliary buses if present
 if 'has_distributed_load' in globals() and has_distributed_load and auxiliar_buses:
     for aux in auxiliar_buses:
         bx = int(aux["busx"])
@@ -1889,7 +1895,7 @@ for wb in wb_sorted:
     volts_phase_rows.append(rowP)
     volts_pu_rows.append(rowPU)
 
-# 2) Volts line (LL) — 선택적 채움
+# 2) Volts line (LL) — optional
 volts_line_rows = []
 for wb in wb_sorted:
     vid = int(wb["id"]); phs = wb.get("phases") or "abc"
@@ -1905,7 +1911,7 @@ for wb in wb_sorted:
     volts_line_rows.append(row)
 
 # 3) Line current/complex power (in/out) and losses
-# in_I_ph* from lines[*]["ibus1_*"]; out_I_ph* = working_buses at 'to' (JL 방식)
+# in_I_ph* from lines[*]["ibus1_*"]; out_I_ph* = working_buses at 'to' (JL style)
 id2wb = {int(w["id"]): w for w in working_buses}
 cflow_rows = []   # current flow (magn/deg)
 pflow_rows = []   # power flow (kW/kVAr)
@@ -1917,7 +1923,7 @@ for m, ln in enumerate(lines):
     V1  = np.array([id2wb[b1]["v_ph1"], id2wb[b1]["v_ph2"], id2wb[b1]["v_ph3"]], dtype=np.complex128)
     V2  = np.array([id2wb[b2]["v_ph1"], id2wb[b2]["v_ph2"], id2wb[b2]["v_ph3"]], dtype=np.complex128)
     inS = V1 * np.conj(inI); outS = V2 * np.conj(outI)
-    # current report (선택적 채움)
+    # current report (optional)
     crow = [b1, b2] + [None]*12
     if "a" in phs:
         crow[2] = _round(abs(inI[0]), 2); crow[3] = _round(_deg(inI[0]), 2)
@@ -1929,7 +1935,7 @@ for m, ln in enumerate(lines):
         crow[6] = _round(abs(inI[2]), 2); crow[7] = _round(_deg(inI[2]), 2)
         crow[12]= _round(abs(outI[2]), 2); crow[13]= _round(_deg(outI[2]), 2)
     cflow_rows.append(crow)
-    # power report (kW/kVAr, 선택적 채움)
+    # power report (kW/kVAr, optional)
     prow = [b1, b2] + [None]*12
     def _kw(z): return _round(np.real(z)/1000.0, 3)
     def _kvar(z): return _round(np.imag(z)/1000.0, 3)
@@ -1943,7 +1949,7 @@ for m, ln in enumerate(lines):
         prow[6],  prow[7]  = _kw(inS[2]),  _kvar(inS[2])
         prow[12], prow[13] = _kw(outS[2]), _kvar(outS[2])
     pflow_rows.append(prow)
-    # losses per phase & totals (kW/kVAr, 선택적 채움)
+    # losses per phase & totals (kW/kVAr, optional)
     L = inS - outS
     lrow = [b1, b2, None,None, None,None, None,None, None,None]
     if "a" in phs:
@@ -1959,7 +1965,7 @@ for m, ln in enumerate(lines):
     lrow[9] = _round(np.imag(np.sum(L))/1000.0, 1)
     loss_rows.append(lrow)
 
-# 4) 보조버스 필터/병합 (distributed loads)
+# 4) Filter/merge auxiliary buses (distributed loads)
 _aux = globals().get('auxiliar_buses', [])
 busx_set = set(int(a["busx"]) for a in _aux) if ('has_distributed_load' in globals() and has_distributed_load and _aux) else set()
 
@@ -2030,11 +2036,11 @@ def _merge_through_busx_losses(lrows):
     merged.sort(key=lambda x:(int(x[0]), int(x[1])))
     return merged
 
-# busx_set 강건 산출
+# Robust calculation of busx_set
 _aux = globals().get("auxiliar_buses", [])
 busx_set = {int(a["busx"]) for a in _aux}
 
-# (보조버스가 없다면 noop이지만, 있으면 항상 병합 수행)
+# No-op if no auxiliary buses; otherwise always merge
 volts_phase_rows = [r for r in volts_phase_rows if int(r[0]) not in busx_set]
 volts_pu_rows    = [r for r in volts_pu_rows    if int(r[0]) not in busx_set]
 volts_line_rows  = [r for r in volts_line_rows  if int(r[0]) not in busx_set]
@@ -2042,23 +2048,23 @@ cflow_rows = _merge_through_busx_currents(cflow_rows)
 pflow_rows = _merge_through_busx_powers(pflow_rows)
 loss_rows  = _merge_through_busx_losses(loss_rows)
 
-# 5) 총 입력 전력 (서브스테이션 from 행만)
+# 5) Total input power (only substation from row)
 sub_from = root_id
 pflow_sub = [r for r in pflow_rows if int(r[0])==sub_from]
-# kW_in / kVAr_in per phase (없으면 0)
+# kW_in / kVAr_in per phase (0 if missing)
 def _sum_col(rows, idx): return sum((r[idx] or 0.0) for r in rows)
 total_input_power = [
     _round(_sum_col(pflow_sub, 2), 3), _round(_sum_col(pflow_sub, 4), 3), _round(_sum_col(pflow_sub, 6), 3),
     _round(_sum_col(pflow_sub, 3), 3), _round(_sum_col(pflow_sub, 5), 3), _round(_sum_col(pflow_sub, 7), 3)
 ]
 
-# 6) CSV 저장
+# 6) Save CSV
 with open(_out("volts_phase"), "w", newline="", encoding="utf-8") as f:
     w = csv.writer(f); w.writerow(["id","volt_A","deg_A","volt_B","deg_B","volt_C","deg_C"])
     for r in sorted(volts_phase_rows, key=lambda x:int(x[0])): w.writerow(r)
 
 with open(_out("volts_pu"), "w", newline="", encoding="utf-8") as f:
-    w = csv.writer(f); w.writerow(["id","volt_A","deg_A","volt_B","deg_B","volt_C","deg_C"])  # jl과 동일 헤더 구조
+    w = csv.writer(f); w.writerow(["id","volt_A","deg_A","volt_B","deg_B","volt_C","deg_C"])  # same header as Julia
     for r in sorted(volts_pu_rows, key=lambda x:int(x[0])): w.writerow(r)
 
 with open(_out("volts_line"), "w", newline="", encoding="utf-8") as f:
@@ -2077,7 +2083,7 @@ with open(_out("power_flow"), "w", newline="", encoding="utf-8") as f:
         "kW_out_ph1","kVAr_out_ph1","kW_out_ph2","kVAr_out_ph2","kW_out_ph3","kVAr_out_ph3"])
     for r in pflow_rows: w.writerow(r)
 
-# === sdpf_power_losses (줄리아 규격: W / VAr, 헤더 ploss/qloss) ===
+# === sdpf_power_losses (Julia format: W / VAr, headers ploss/qloss) ===
 def _r1(x): return None if x is None else round(float(x), 1)
 def _sum_opt(*vals):
     s = 0.0; seen = False
@@ -2086,9 +2092,9 @@ def _sum_opt(*vals):
             s += float(v); seen = True
     return _r1(s) if seen else None
 
-accP_W  = 0.0   # 누적 유효손실 [W]
-accQ_VAr = 0.0  # 누적 무효손실 [VAr]
-# 1) 선로별 손실 계산 (보조버스 병합 전)
+accP_W  = 0.0   # accumulated active loss [W]
+accQ_VAr = 0.0  # accumulated reactive loss [VAr]
+# 1) Compute losses per line (before merging auxiliary buses)
 rows = []  # [from,to,p1,q1,p2,q2,p3,q3,pt,qt]
 id2V   = {int(b["id"]): np.array([b["v_ph1"], b["v_ph2"], b["v_ph3"]], dtype=np.complex128) for b in working_buses}
 id2idx = {int(b["id"]): i for i, b in enumerate(working_buses)}
@@ -2114,7 +2120,7 @@ for m, gl in enumerate(gen_lines_mat):
     accP_W += float(np.real(L).sum())
     accQ_VAr += float(np.imag(L).sum())
 
-# 2) 보조버스 병합 (from→busx, busx→to → from→to)
+# 2) Merge auxiliary buses (from→busx, busx→to → from→to)
 _aux = globals().get("auxiliar_buses", [])
 busx_set = {int(a["busx"]) for a in _aux}
 
@@ -2132,7 +2138,7 @@ if busx_set:
         for rin in by_to.get(x, []):      # u -> x
             for rout in by_from.get(x, []):  # x -> w
                 u, w = int(rin[0]), int(rout[1])
-                # 상별 합산(없으면 None 유지)
+                # Sum per phase (keep None if absent)
                 p1 = _sum_opt(rin[2], rout[2]); q1 = _sum_opt(rin[3], rout[3])
                 p2 = _sum_opt(rin[4], rout[4]); q2 = _sum_opt(rin[5], rout[5])
                 p3 = _sum_opt(rin[6], rout[6]); q3 = _sum_opt(rin[7], rout[7])
@@ -2141,7 +2147,7 @@ if busx_set:
 
     rows = keep + merged
 
-# 3) from→to 오름차순 정렬 + 저장(빈 상은 공란)
+# 3) Sort from→to ascending and save (blank for empty phases)
 rows.sort(key=lambda r: (int(r[0]), int(r[1])))
 
 with open(_out("power_losses"), "w", newline="", encoding="utf-8") as f:
@@ -2156,7 +2162,7 @@ with open(_out("total_input_power"), "w", newline="", encoding="utf-8") as f:
     w = csv.writer(f); w.writerow(["kW_in_ph1","kW_in_ph2","kW_in_ph3","kVAr_in_ph1","kVAr_in_ph2","kVAr_in_ph3"])
     w.writerow(total_input_power)
 
-# 7) DG 요약 (있을 때만)
+# 7) DG summary (if any)
 if 'has_distributed_gen' in globals() and has_distributed_gen and generation_register:
     gen_sorted = sorted(generation_register, key=lambda g:int(g["bus"]))
     with open(_out("distributed_generation"), "w", newline="", encoding="utf-8") as f:
@@ -2168,7 +2174,7 @@ if 'has_distributed_gen' in globals() and has_distributed_gen and generation_reg
                         _round(g["kw_ph2"],3), _round(g["kvar_ph2"],3),
                         _round(g["kw_ph3"],3), _round(g["kvar_ph3"],3)])
 
-# 8) 요약 출력
+# 8) Print summary
 if 'display_summary' in globals() and display_summary:
     print(f"\nmaximum voltage (pu): {ext_max_pu} at bus {ext_max_bus}")
     print(f"minimum voltage (pu): {ext_min_pu} at bus {ext_min_bus}")
@@ -2207,7 +2213,7 @@ def _print_dg_table(gen_rows):
         out = [str(i)] + [str(r[j]) for j in range(len(cols))]
         print("  " + "  ".join(f"{out[k]:<{w2[k]}}" for k in range(len(out))))
 
-# 호출 (CSV 저장 후, 요약 출력 전에)
+# Invocation (after saving CSV and before summary output)
 if has_distributed_gen and generation_register:
     gen_sorted = sorted(generation_register, key=lambda g: int(g["bus"]))
     _print_dg_table(gen_sorted)
